@@ -189,6 +189,10 @@ struct Values {
     #[serde(skip_serializing_if = "Option::is_none")]
     window: Option<Frame>,
     #[serde(default)]
+    lastfm_api_key: String,
+    #[serde(default)]
+    lastfm_api_secret: String,
+    #[serde(default)]
     lastfm_session_key: String,
     #[serde(default)]
     lastfm_username: String,
@@ -254,6 +258,8 @@ impl Default for Values {
             pinned: Vec::new(),
             resume: None,
             window: None,
+            lastfm_api_key: String::new(),
+            lastfm_api_secret: String::new(),
             lastfm_session_key: String::new(),
             lastfm_username: String::new(),
             listenbrainz_token: String::new(),
@@ -518,6 +524,14 @@ impl AppSettings {
 
     pub fn theme_overrides(&self) -> &ThemeOverrides {
         &self.values.appearance.theme_overrides
+    }
+
+    pub fn lastfm_api_key(&self) -> &str {
+        &self.values.lastfm_api_key
+    }
+
+    pub fn lastfm_api_secret(&self) -> &str {
+        &self.values.lastfm_api_secret
     }
 
     pub fn lastfm_session_key(&self) -> &str {
@@ -792,6 +806,24 @@ impl AppSettings {
             return;
         }
         self.values.provider = provider;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_lastfm_api_key(&mut self, key: impl Into<String>, cx: &mut Context<Self>) {
+        let key = key.into();
+        if self.values.lastfm_api_key == key {
+            return;
+        }
+        self.values.lastfm_api_key = key;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_lastfm_api_secret(&mut self, secret: impl Into<String>, cx: &mut Context<Self>) {
+        let secret = secret.into();
+        if self.values.lastfm_api_secret == secret {
+            return;
+        }
+        self.values.lastfm_api_secret = secret;
         self.schedule_save(cx);
     }
 
