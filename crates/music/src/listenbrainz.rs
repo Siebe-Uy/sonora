@@ -87,7 +87,8 @@ pub async fn validate_token(token: &str) -> Result<bool> {
 #[async_trait]
 impl Scrobbler for ListenBrainzClient {
     async fn now_playing(&self, track: &Track) -> Result<()> {
-        self.submit(listen_payload(track, "playing_now", None)).await
+        self.submit(listen_payload(track, "playing_now", None))
+            .await
     }
 
     async fn scrobble(&self, track: &Track, started_at: SystemTime) -> Result<()> {
