@@ -188,6 +188,12 @@ struct Values {
     resume: Option<Resume>,
     #[serde(skip_serializing_if = "Option::is_none")]
     window: Option<Frame>,
+    #[serde(default)]
+    lastfm_session_key: String,
+    #[serde(default)]
+    lastfm_username: String,
+    #[serde(default)]
+    listenbrainz_token: String,
     appearance: Appearance,
 }
 
@@ -248,6 +254,9 @@ impl Default for Values {
             pinned: Vec::new(),
             resume: None,
             window: None,
+            lastfm_session_key: String::new(),
+            lastfm_username: String::new(),
+            listenbrainz_token: String::new(),
             appearance: Appearance::default(),
         }
     }
@@ -511,6 +520,18 @@ impl AppSettings {
         &self.values.appearance.theme_overrides
     }
 
+    pub fn lastfm_session_key(&self) -> &str {
+        &self.values.lastfm_session_key
+    }
+
+    pub fn lastfm_username(&self) -> &str {
+        &self.values.lastfm_username
+    }
+
+    pub fn listenbrainz_token(&self) -> &str {
+        &self.values.listenbrainz_token
+    }
+
     pub fn ensure_file(&self) -> PathBuf {
         if !self.path.exists() {
             self.save_now();
@@ -771,6 +792,33 @@ impl AppSettings {
             return;
         }
         self.values.provider = provider;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_lastfm_session_key(&mut self, key: impl Into<String>, cx: &mut Context<Self>) {
+        let key = key.into();
+        if self.values.lastfm_session_key == key {
+            return;
+        }
+        self.values.lastfm_session_key = key;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_lastfm_username(&mut self, username: impl Into<String>, cx: &mut Context<Self>) {
+        let username = username.into();
+        if self.values.lastfm_username == username {
+            return;
+        }
+        self.values.lastfm_username = username;
+        self.schedule_save(cx);
+    }
+
+    pub fn set_listenbrainz_token(&mut self, token: impl Into<String>, cx: &mut Context<Self>) {
+        let token = token.into();
+        if self.values.listenbrainz_token == token {
+            return;
+        }
+        self.values.listenbrainz_token = token;
         self.schedule_save(cx);
     }
 
