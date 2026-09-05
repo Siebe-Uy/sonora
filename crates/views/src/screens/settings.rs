@@ -28,6 +28,7 @@ use ui::{
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LICENSE_URL: &str = "https://www.gnu.org/licenses/gpl-3.0.html";
 const SOURCE_URL: &str = "https://github.com/nolight132/sonora";
+const LASTFM_CREATE_APP_URL: &str = "https://www.last.fm/api/account/create";
 
 const THEMES: &str = "themes";
 const PACKS: &str = "packs";
@@ -133,6 +134,8 @@ pub struct SettingsView {
     popovers: Popovers,
     browsers: Option<(&'static str, Vec<SharedString>)>,
     secret: Entity<Input>,
+    lastfm_api_key_input: Entity<Input>,
+    lastfm_api_secret_input: Entity<Input>,
     listenbrainz_input: Entity<Input>,
     languages: SearchPopup,
     typefaces: SearchPopup,
@@ -165,6 +168,16 @@ impl SettingsView {
             cx.notify();
         })
         .detach();
+        let lastfm_api_key_input = cx.new(|cx| {
+            let mut input = Input::new("settings-lastfm-api-key-hint", cx);
+            input.set_text(scrobbling.read(cx).lastfm_api_key(cx), cx);
+            input
+        });
+        let lastfm_api_secret_input = cx.new(|cx| {
+            let mut input = Input::new("settings-lastfm-api-secret-hint", cx);
+            input.set_text(scrobbling.read(cx).lastfm_api_secret(cx), cx);
+            input
+        });
         Self {
             session,
             playback,
@@ -176,6 +189,8 @@ impl SettingsView {
             popovers: Popovers::default(),
             browsers: None,
             secret: cx.new(|cx| Input::new("login-cookie-hint", cx)),
+            lastfm_api_key_input,
+            lastfm_api_secret_input,
             listenbrainz_input: cx.new(|cx| Input::new("settings-listenbrainz-token-hint", cx)),
             languages,
             typefaces,
@@ -1344,10 +1359,11 @@ impl SettingsView {
         let theme = *cx.theme();
         let username = self.scrobbling.read(cx).lastfm_username(cx);
         let awaiting = self.scrobbling.read(cx).lastfm_awaiting_confirmation();
+        let connected = username.is_some();
 
         div()
             .flex()
-            .items_center()
+            .flex_col()
             .gap_3()
             .p(theme.metrics.pad)
             .rounded(theme.radius)
@@ -1356,50 +1372,87 @@ impl SettingsView {
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_0p5()
-                    .child(div().font_weight(FontWeight::MEDIUM).child("Last.fm"))
+                    .items_center()
+                    .gap_3()
                     .child(
                         div()
-                            .text_color(theme.muted_foreground)
-                            .text_size(theme.text(Text::Small))
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_0p5()
+                            .child(div().font_weight(FontWeight::MEDIUM).child("Last.fm"))
                             .child(
-                                username
-                                    .clone()
-                                    .unwrap_or_else(|| t!("settings-provider-none")),
+                                div()
+                                    .text_color(theme.muted_foreground)
+                                    .text_size(theme.text(Text::Small))
+                                    .child(
+                                        username
+                                            .clone()
+                                            .unwrap_or_else(|| t!("settings-provider-none")),
+                                    ),
                             ),
-                    ),
+                    )
+                    .when(connected, |this| {
+                        this.child(
+                            Button::new("disconnect-lastfm")
+                                .label(t!("settings-lastfm-disconnect"))
+                                .small()
+                                .ghost()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.scrobbling.update(cx, |scrobbling, cx| {
+                                        scrobbling.disconnect_lastfm(cx)
+                                    });
+                                })),
+                        )
+                    })
+                    .when(!connected && awaiting, |this| {
+                        this.child(
+                            Button::new("confirm-lastfm")
+                                .label(t!("settings-lastfm-confirm"))
+                                .small()
+                                .outline()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.scrobbling
+                                        .update(cx, |scrobbling, cx| scrobbling.confirm_lastfm(cx));
+                                })),
+                        )
+                    }),
             )
-            .child(match username.is_some() {
-                true => Button::new("disconnect-lastfm")
-                    .label(t!("settings-lastfm-disconnect"))
-                    .small()
-                    .ghost()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.scrobbling
-                            .update(cx, |scrobbling, cx| scrobbling.disconnect_lastfm(cx));
-                    }))
-                    .into_any_element(),
-                false if awaiting => Button::new("confirm-lastfm")
-                    .label(t!("settings-lastfm-confirm"))
-                    .small()
-                    .outline()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.scrobbling
-                            .update(cx, |scrobbling, cx| scrobbling.confirm_lastfm(cx));
-                    }))
-                    .into_any_element(),
-                false => Button::new("connect-lastfm")
-                    .label(t!("settings-lastfm-connect"))
-                    .small()
-                    .outline()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.scrobbling
-                            .update(cx, |scrobbling, cx| scrobbling.connect_lastfm(cx));
-                    }))
-                    .into_any_element(),
+            .when(!connected && !awaiting, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(self.lastfm_api_key_input.clone())
+                        .child(self.lastfm_api_secret_input.clone())
+                        .child(
+                            Button::new("connect-lastfm")
+                                .label(t!("settings-lastfm-connect"))
+                                .small()
+                                .outline()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let api_key =
+                                        this.lastfm_api_key_input.read(cx).text().to_string();
+                                    let api_secret =
+                                        this.lastfm_api_secret_input.read(cx).text().to_string();
+                                    if api_key.trim().is_empty() || api_secret.trim().is_empty() {
+                                        return;
+                                    }
+                                    this.scrobbling.update(cx, |scrobbling, cx| {
+                                        scrobbling.connect_lastfm(api_key, api_secret, cx)
+                                    });
+                                })),
+                        )
+                        .child(
+                            Button::new("lastfm-create-app")
+                                .label(t!("settings-lastfm-api-create"))
+                                .small()
+                                .ghost()
+                                .on_click(|_, _, cx| cx.open_url(LASTFM_CREATE_APP_URL)),
+                        ),
+                )
             })
     }
 
