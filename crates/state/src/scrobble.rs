@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use gpui::{Context, Entity, Task};
+use gpui::{App, Context, Entity, SharedString, Task};
 use music::lastfm::LastfmClient;
 use music::listenbrainz::ListenBrainzClient;
 use music::{Scrobbler, Track};
 
 use crate::playback::PlaybackEvent;
-use crate::{AppSettings, Io, Playback};
+use crate::{AppSettings, Io, Outcome, Playback, Toasts, join};
 
 const MIN_SCROBBLE_DURATION: Duration = Duration::from_secs(30);
 const MAX_SCROBBLE_WAIT: Duration = Duration::from_secs(4 * 60);
@@ -21,11 +21,8 @@ pub struct Scrobbling {
     active: Option<String>,
     started_at: Option<SystemTime>,
     fired: bool,
-    #[allow(dead_code)]
     pending_lastfm_token: Option<String>,
-    #[allow(dead_code)]
     lastfm_task: Option<Task<()>>,
-    #[allow(dead_code)]
     listenbrainz_task: Option<Task<()>>,
 }
 
@@ -43,7 +40,8 @@ impl Scrobbling {
         .detach();
         cx.observe(&playback, |this, _, cx| this.check_threshold(cx))
             .detach();
-        cx.observe(&settings, |this, _, cx| this.rebuild(cx)).detach();
+        cx.observe(&settings, |this, _, cx| this.rebuild(cx))
+            .detach();
 
         let mut scrobbling = Self {
             settings,
@@ -154,5 +152,123 @@ impl Scrobbling {
                 }
             });
         }
+    }
+
+    pub fn lastfm_username(&self, cx: &App) -> Option<SharedString> {
+        let username = self.settings.read(cx).lastfm_username().to_owned();
+        (!username.is_empty()).then(|| SharedString::from(username))
+    }
+
+    pub fn lastfm_awaiting_confirmation(&self) -> bool {
+        self.pending_lastfm_token.is_some()
+    }
+
+    pub fn listenbrainz_connected(&self, cx: &App) -> bool {
+        !self.settings.read(cx).listenbrainz_token().is_empty()
+    }
+
+    pub fn connect_lastfm(&mut self, cx: &mut Context<Self>) {
+        if self.lastfm_task.is_some() {
+            return;
+        }
+        let io = self.io.clone();
+        self.lastfm_task = Some(cx.spawn(async move |this, cx| {
+            let requested =
+                join(io.spawn(async move { music::lastfm::request_token().await })).await;
+            this.update(cx, |this, cx| {
+                this.lastfm_task = None;
+                match requested {
+                    Ok(token) => {
+                        let url = music::lastfm::auth_url(&token);
+                        this.pending_lastfm_token = Some(token);
+                        cx.open_url(&url);
+                    }
+                    Err(error) => {
+                        log::warn!("scrobble: cannot request a last.fm token: {error:#}");
+                        Toasts::show(Outcome::Failed, "toast-lastfm-failed", cx);
+                    }
+                }
+            })
+            .ok();
+        }));
+    }
+
+    pub fn confirm_lastfm(&mut self, cx: &mut Context<Self>) {
+        if self.lastfm_task.is_some() {
+            return;
+        }
+        let Some(token) = self.pending_lastfm_token.clone() else {
+            return;
+        };
+        let io = self.io.clone();
+        self.lastfm_task = Some(cx.spawn(async move |this, cx| {
+            let exchanged =
+                join(io.spawn(async move { music::lastfm::exchange_session(&token).await })).await;
+            this.update(cx, |this, cx| {
+                this.lastfm_task = None;
+                this.pending_lastfm_token = None;
+                match exchanged {
+                    Ok((session_key, username)) => {
+                        this.settings.update(cx, |settings, cx| {
+                            settings.set_lastfm_session_key(session_key, cx);
+                            settings.set_lastfm_username(username.clone(), cx);
+                        });
+                        Toasts::about(Outcome::Done, "toast-lastfm-connected", username, cx);
+                    }
+                    Err(error) => {
+                        log::warn!("scrobble: cannot complete last.fm sign-in: {error:#}");
+                        Toasts::show(Outcome::Failed, "toast-lastfm-failed", cx);
+                    }
+                }
+            })
+            .ok();
+        }));
+    }
+
+    pub fn disconnect_lastfm(&mut self, cx: &mut Context<Self>) {
+        self.pending_lastfm_token = None;
+        self.settings.update(cx, |settings, cx| {
+            settings.set_lastfm_session_key(String::new(), cx);
+            settings.set_lastfm_username(String::new(), cx);
+        });
+    }
+
+    pub fn set_listenbrainz_token(&mut self, token: String, cx: &mut Context<Self>) {
+        if self.listenbrainz_task.is_some() {
+            return;
+        }
+        let checked = token.clone();
+        let io = self.io.clone();
+        self.listenbrainz_task = Some(cx.spawn(async move |this, cx| {
+            let validated =
+                join(io.spawn(async move { music::listenbrainz::validate_token(&checked).await }))
+                    .await;
+            this.update(cx, |this, cx| {
+                this.listenbrainz_task = None;
+                match validated {
+                    Ok(true) => {
+                        this.settings.update(cx, |settings, cx| {
+                            settings.set_listenbrainz_token(token, cx)
+                        });
+                        Toasts::show(Outcome::Done, "toast-listenbrainz-connected", cx);
+                    }
+                    Ok(false) => {
+                        log::warn!("scrobble: listenbrainz rejected the token");
+                        Toasts::show(Outcome::Failed, "toast-listenbrainz-failed", cx);
+                    }
+                    Err(error) => {
+                        log::warn!("scrobble: cannot validate a listenbrainz token: {error:#}");
+                        Toasts::show(Outcome::Failed, "toast-listenbrainz-failed", cx);
+                    }
+                }
+            })
+            .ok();
+        }));
+    }
+
+    pub fn disconnect_listenbrainz(&mut self, cx: &mut Context<Self>) {
+        self.settings.update(cx, |settings, cx| {
+            settings.set_listenbrainz_token(String::new(), cx)
+        });
     }
 }
