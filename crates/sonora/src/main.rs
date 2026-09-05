@@ -162,6 +162,7 @@ fn open_window(cx: &mut App) {
         cover: _,
         library,
         history: _,
+        scrobbling: _,
         lyrics: _,
         playback,
         queue,

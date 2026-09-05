@@ -92,6 +92,7 @@ pub struct Sonora {
     pub cover: Entity<Cover>,
     pub library: Entity<Library>,
     pub history: Entity<History>,
+    pub scrobbling: Entity<Scrobbling>,
     pub lyrics: Entity<Lyrics>,
     pub playback: Entity<Playback>,
     pub queue: Entity<Queue>,
@@ -124,6 +125,8 @@ pub fn init(
     let queue = cx.new(|cx| Queue::new(session.clone(), settings.clone(), cx));
     let playback = cx.new(|cx| Playback::new(session.clone(), queue.clone(), settings.clone(), cx));
     let history = cx.new(|cx| History::new(session.clone(), playback.clone(), io.clone(), cx));
+    let scrobbling =
+        cx.new(|cx| Scrobbling::new(settings.clone(), playback.clone(), io.clone(), cx));
     let lyrics = cx.new(|cx| {
         Lyrics::new(
             playback.clone(),
@@ -144,6 +147,7 @@ pub fn init(
         cover,
         library,
         history,
+        scrobbling,
         lyrics,
         playback,
         queue,
