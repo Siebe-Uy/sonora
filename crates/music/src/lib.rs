@@ -204,6 +204,12 @@ pub trait PlaybackFactory: Send + Sync {
     fn start(&self, config: PlaybackConfig) -> (Box<dyn Player>, Box<dyn PlaybackEvents>);
 }
 
+#[async_trait]
+pub trait Scrobbler: Send + Sync {
+    async fn now_playing(&self, track: &Track) -> Result<()>;
+    async fn scrobble(&self, track: &Track, started_at: std::time::SystemTime) -> Result<()>;
+}
+
 pub struct ProviderSession {
     pub profile: UserProfile,
     pub api: Arc<dyn MusicApi>,
