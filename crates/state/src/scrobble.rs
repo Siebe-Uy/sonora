@@ -12,7 +12,6 @@ use crate::{AppSettings, Io, Playback};
 const MIN_SCROBBLE_DURATION: Duration = Duration::from_secs(30);
 const MAX_SCROBBLE_WAIT: Duration = Duration::from_secs(4 * 60);
 
-#[allow(dead_code)]
 pub struct Scrobbling {
     settings: Entity<AppSettings>,
     playback: Entity<Playback>,
@@ -22,8 +21,11 @@ pub struct Scrobbling {
     active: Option<String>,
     started_at: Option<SystemTime>,
     fired: bool,
+    #[allow(dead_code)]
     pending_lastfm_token: Option<String>,
+    #[allow(dead_code)]
     lastfm_task: Option<Task<()>>,
+    #[allow(dead_code)]
     listenbrainz_task: Option<Task<()>>,
 }
 
