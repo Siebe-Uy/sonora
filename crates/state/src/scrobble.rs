@@ -61,16 +61,22 @@ impl Scrobbling {
     }
 
     fn rebuild(&mut self, cx: &mut Context<Self>) {
-        let (session_key, listenbrainz_token) = {
+        let (api_key, api_secret, session_key, listenbrainz_token) = {
             let settings = self.settings.read(cx);
             (
+                settings.lastfm_api_key().to_owned(),
+                settings.lastfm_api_secret().to_owned(),
                 settings.lastfm_session_key().to_owned(),
                 settings.listenbrainz_token().to_owned(),
             )
         };
-        self.lastfm = match session_key.is_empty() {
+        self.lastfm = match api_key.is_empty() || api_secret.is_empty() || session_key.is_empty() {
             true => None,
-            false => Some(Arc::new(LastfmClient::new(session_key))),
+            false => Some(Arc::new(LastfmClient::new(
+                api_key,
+                api_secret,
+                session_key,
+            ))),
         };
         self.listenbrainz = match listenbrainz_token.is_empty() {
             true => None,
@@ -159,6 +165,14 @@ impl Scrobbling {
         (!username.is_empty()).then(|| SharedString::from(username))
     }
 
+    pub fn lastfm_api_key(&self, cx: &App) -> String {
+        self.settings.read(cx).lastfm_api_key().to_owned()
+    }
+
+    pub fn lastfm_api_secret(&self, cx: &App) -> String {
+        self.settings.read(cx).lastfm_api_secret().to_owned()
+    }
+
     pub fn lastfm_awaiting_confirmation(&self) -> bool {
         self.pending_lastfm_token.is_some()
     }
@@ -167,19 +181,26 @@ impl Scrobbling {
         !self.settings.read(cx).listenbrainz_token().is_empty()
     }
 
-    pub fn connect_lastfm(&mut self, cx: &mut Context<Self>) {
+    pub fn connect_lastfm(&mut self, api_key: String, api_secret: String, cx: &mut Context<Self>) {
         if self.lastfm_task.is_some() {
             return;
         }
+        self.settings.update(cx, |settings, cx| {
+            settings.set_lastfm_api_key(api_key.clone(), cx);
+            settings.set_lastfm_api_secret(api_secret.clone(), cx);
+        });
         let io = self.io.clone();
         self.lastfm_task = Some(cx.spawn(async move |this, cx| {
-            let requested =
-                join(io.spawn(async move { music::lastfm::request_token().await })).await;
+            let requested = join(
+                io.spawn(async move { music::lastfm::request_token(&api_key, &api_secret).await }),
+            )
+            .await;
             this.update(cx, |this, cx| {
                 this.lastfm_task = None;
                 match requested {
                     Ok(token) => {
-                        let url = music::lastfm::auth_url(&token);
+                        let api_key = this.settings.read(cx).lastfm_api_key();
+                        let url = music::lastfm::auth_url(api_key, &token);
                         this.pending_lastfm_token = Some(token);
                         cx.open_url(&url);
                     }
@@ -200,10 +221,19 @@ impl Scrobbling {
         let Some(token) = self.pending_lastfm_token.clone() else {
             return;
         };
+        let (api_key, api_secret) = {
+            let settings = self.settings.read(cx);
+            (
+                settings.lastfm_api_key().to_owned(),
+                settings.lastfm_api_secret().to_owned(),
+            )
+        };
         let io = self.io.clone();
         self.lastfm_task = Some(cx.spawn(async move |this, cx| {
-            let exchanged =
-                join(io.spawn(async move { music::lastfm::exchange_session(&token).await })).await;
+            let exchanged = join(io.spawn(async move {
+                music::lastfm::exchange_session(&api_key, &api_secret, &token).await
+            }))
+            .await;
             this.update(cx, |this, cx| {
                 this.lastfm_task = None;
                 this.pending_lastfm_token = None;
