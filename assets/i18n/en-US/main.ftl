@@ -518,6 +518,15 @@ settings-provider-current = Playing from this service
 settings-provider-guest = Playing as a guest
 settings-provider-switch = Switch to
 settings-sign-out = Sign out
+settings-group-scrobbling = Scrobbling
+settings-scrobbling = Send plays to Last.fm and ListenBrainz
+settings-scrobbling-detail = Connect either service to log every track you finish
+settings-lastfm-connect = Connect Last.fm
+settings-lastfm-confirm = I've authorized
+settings-lastfm-disconnect = Disconnect
+settings-listenbrainz-token-hint = Paste your ListenBrainz user token
+settings-listenbrainz-save = Save
+settings-listenbrainz-disconnect = Disconnect
 settings-local-folder = Imported music folder
 settings-local-folder-empty = Not configured
 settings-choose-folder = Choose folder…
@@ -593,6 +602,10 @@ toast-sign-in-to-play = { $name } only streams to a signed-in listener
 toast-track-unplayable = { $name } could not be played
 toast-library-add-failed = { $name } could not be added to your library
 toast-library-remove-failed = { $name } could not be removed from your library
+toast-lastfm-connected = Connected to Last.fm as { $name }
+toast-lastfm-failed = Could not connect to Last.fm
+toast-listenbrainz-connected = Connected to ListenBrainz
+toast-listenbrainz-failed = Could not connect to ListenBrainz
 
 # lyrics
 lyrics-title = Lyrics
