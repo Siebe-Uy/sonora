@@ -4,6 +4,7 @@ pub mod kugou;
 #[cfg(test)]
 mod live_tests;
 pub mod lastfm;
+pub mod listenbrainz;
 pub mod local;
 pub mod lrclib;
 pub mod lyrics;
